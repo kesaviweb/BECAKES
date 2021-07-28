@@ -1,14 +1,27 @@
 /**
- *Submitted for verification at BscScan.com on 2021-07-22
-*/
+ Baby Elon Pancakes 🥞
 
-/**
- *Submitted for verification at BscScan.com on 2021-07-10
-*/
+	100,000,000,000 SUPPLY
+
+	Tokenomics: 
+
+	🍰10% Auto $CAKE Redistribution 
+	🏊2% Auto Liquidity Pool
+	🔥1% Buy Back and Burn Mechanism
+	💰2% Marketing Fee 
+
+	Elon shrunk himself and needs your help! 
+	Feed baby Elon some pancakes so he can grow and get stronger, 
+	in return he will give you some cake!
+
+	📱 Telegram: https://t.me/babyelonpancakes
+ 	🌎 Website: https://www.babyelonpancakes.com
+	🌐 Twitter: https://twitter.com/babyelonpancake
+**/
 
 //SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.4;
+pragma solidity ^0.8.6;
 
 library SafeMath {
     function add(uint256 a, uint256 b) internal pure returns (uint256) {
