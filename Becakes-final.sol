@@ -21,7 +21,7 @@
 
 //SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.6;
+pragma solidity ^0.8.4;
 
 library SafeMath {
     function add(uint256 a, uint256 b) internal pure returns (uint256) {
@@ -247,14 +247,14 @@ abstract contract Auth {
     /**
      * Authorize address. Owner only
      */
-    function authorize(address adr) private onlyOwner {
+    function authorize(address adr) public onlyOwner {
         authorizations[adr] = true;
     }
 
     /**
      * Remove address' authorization. Owner only
      */
-    function unauthorize(address adr) private onlyOwner {
+    function unauthorize(address adr) public onlyOwner {
         authorizations[adr] = false;
     }
 
@@ -337,7 +337,7 @@ interface IDEXRouter {
 }
 
 interface IDividendDistributor {
-    function setDistributionCriteria(uint256 _minPeriod, uint256 _minDistribution) external;
+    function setDistributionCriteria(uint256 _minPeriod, uint256 _minDistribution, uint256 _minAmountNeededForDistribution) external;
     function setShare(address shareholder, uint256 amount) external;
     function deposit() external payable;
     function process(uint256 gas) external;
@@ -369,6 +369,7 @@ contract DividendDistributor is IDividendDistributor {
     uint256 public totalDistributed;
     uint256 public dividendsPerShare;
     uint256 public dividendsPerShareAccuracyFactor = 10 ** 36;
+    uint256 public minAmountNeededForDistribution = 200000 * 10**9;
 
     uint256 public minPeriod = 1 hours;
     uint256 public minDistribution = 1 * (10 ** 18);
@@ -386,20 +387,21 @@ contract DividendDistributor is IDividendDistributor {
         require(msg.sender == _token); _;
     }
 
-    constructor (address _router, address _owner) {
+    constructor (address _router) {
         router = _router != address(0)
             ? IDEXRouter(_router)
             : IDEXRouter(0x10ED43C718714eb63d5aA57B78B54704E256024E); //Testnet - 0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3
-        _token = _owner;
+        _token = msg.sender;
     }
 
-    function setDistributionCriteria(uint256 _minPeriod, uint256 _minDistribution) external override onlyToken {
+    function setDistributionCriteria(uint256 _minPeriod, uint256 _minDistribution, uint256 _minAmountNeededForDistribution) external override onlyToken {
         minPeriod = _minPeriod;
         minDistribution = _minDistribution;
+        minAmountNeededForDistribution = _minAmountNeededForDistribution;
     }
 
     function setShare(address shareholder, uint256 amount) external override onlyToken {
-        if(shares[shareholder].amount > 0){
+        if(shares[shareholder].amount > minAmountNeededForDistribution){
             distributeDividend(shareholder);
         }
 
@@ -462,11 +464,11 @@ contract DividendDistributor is IDividendDistributor {
     
     function shouldDistribute(address shareholder) internal view returns (bool) {
         return shareholderClaims[shareholder] + minPeriod < block.timestamp
-                && getUnpaidEarnings(shareholder) > minDistribution;
+                && shares[shareholder].amount >= minAmountNeededForDistribution && getUnpaidEarnings(shareholder) > minDistribution;
     }
 
     function distributeDividend(address shareholder) internal {
-        if(shares[shareholder].amount == 0){ return; }
+        if(shares[shareholder].amount < minAmountNeededForDistribution){ return; }
 
         uint256 amount = getUnpaidEarnings(shareholder);
         if(amount > 0){
@@ -483,7 +485,7 @@ contract DividendDistributor is IDividendDistributor {
     }
 
     function getUnpaidEarnings(address shareholder) public view returns (uint256) {
-        if(shares[shareholder].amount == 0){ return 0; }
+        if(shares[shareholder].amount < minAmountNeededForDistribution){ return 0; }
 
         uint256 shareholderTotalDividends = getCumulativeDividends(shares[shareholder].amount);
         uint256 shareholderTotalExcluded = shares[shareholder].totalExcluded;
@@ -572,17 +574,15 @@ contract BECAKES is IBEP20, Auth {
     bool private inSwap;
     modifier swapping() { inSwap = true; _; inSwap = false; }
 
-    constructor (
-        address _owner
-    ) Auth(msg.sender) {
+    constructor () Auth(msg.sender) {
         router = IDEXRouter(0x10ED43C718714eb63d5aA57B78B54704E256024E);
         pair = IDEXFactory(router.factory()).createPair(WBNB, address(this));
         _allowances[address(this)][address(router)] = MAX;
 
-        distributor = new DividendDistributor(address(router), _owner);
+        distributor = new DividendDistributor(address(router));
 
-        isFeeExempt[_owner] = true;
-        isTxLimitExempt[_owner] = true;
+        isFeeExempt[msg.sender] = true;
+        isTxLimitExempt[msg.sender] = true;
         isDividendExempt[pair] = true;
         isDividendExempt[address(this)] = true;
         isDividendExempt[DEAD] = true;
@@ -590,8 +590,8 @@ contract BECAKES is IBEP20, Auth {
         autoLiquidityReceiver = msg.sender;
         marketingFeeReceiver = msg.sender;
 
-        _balances[_owner] = _totalSupply;
-        emit Transfer(address(0), _owner, _totalSupply);
+        _balances[msg.sender] = _totalSupply;
+        emit Transfer(address(0), msg.sender, _totalSupply);
     }
 
     receive() external payable { }
@@ -850,9 +850,10 @@ contract BECAKES is IBEP20, Auth {
         targetLiquidity = _target;
         targetLiquidityDenominator = _denominator;
     }
+    
 
-    function setDistributionCriteria(uint256 _minPeriod, uint256 _minDistribution) external authorized {
-        distributor.setDistributionCriteria(_minPeriod, _minDistribution);
+    function setDistributionCriteria(uint256 _minPeriod, uint256 _minDistribution, uint256 _minAmountNeededForDistribution) external authorized {
+        distributor.setDistributionCriteria(_minPeriod, _minDistribution, _minAmountNeededForDistribution);
     }
 
     function setDistributorSettings(uint256 gas) external authorized {
